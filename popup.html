@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tab Content Rotator</title>
+  <style>
+    body {
+      width: 250px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+    }
+    h2 {
+      text-align: center;
+      margin-top: 0;
+      color: #4285f4;
+    }
+    .control-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    .reset {
+      background-color: #ea4335;
+    }
+    .reset:hover {
+      background-color: #d33426;
+    }
+    .status {
+      text-align: center;
+      margin-top: 10px;
+      font-style: italic;
+      color: #5f6368;
+    }
+    .video-selector {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .video-selector button {
+      width: auto;
+      padding: 5px 8px;
+    }
+    #videoCounter {
+      font-size: 14px;
+      color: #5f6368;
+    }
+  </style>
+</head>
+<body>
+  <h2>Tab Content Rotator</h2>
+  
+  <div class="control-group">
+    <label>Rotation Options:</label>
+    <button id="rotate90">Rotate 90° Clockwise</button>
+    <button id="rotate180">Rotate 180°</button>
+    <button id="rotate270">Rotate 90° Counter-Clockwise</button>
+    <button id="reset" class="reset">Reset Rotation</button>
+  </div>
+  
+  <div class="control-group">
+    <label>Target Selection:</label>
+    <button id="rotateVideo">Rotate Videos Only</button>
+    <button id="rotateAll">Rotate Entire Page</button>
+    <div class="toggle-container">
+      <label for="remoteOnlyToggle">Remote videos only:</label>
+      <input type="checkbox" id="remoteOnlyToggle" checked>
+    </div>
+  </div>
+  
+  <div class="control-group" id="videoSelectionGroup" style="display: none;">
+    <label>Select Video to Rotate:</label>
+    <div class="video-selector">
+      <button id="prevVideo">◀ Previous</button>
+      <span id="videoCounter">Video 0 of 0</span>
+      <button id="nextVideo">Next ▶</button>
+    </div>
+    <button id="applyToSelected">Apply to Selected Video</button>
+  </div>
+  
+  <div class="status" id="status">Ready to rotate content</div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
