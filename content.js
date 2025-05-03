@@ -1,297 +1,370 @@
-// Content script to handle rotation of page elements
+// Content script that runs on web pages to rotate videos or the entire page
 
-// Store the current state
+// Keep track of the current state
 let currentState = {
   degrees: 0,
   target: 'video',
-  selectedVideoIndex: -1, // -1 means no specific video selected
-  isRemoteOnly: true // Default to rotating only remote videos (not local/self video)
+  videoIndex: -1,
+  isRemoteOnly: true,
+  rotateLocalVideo: false,
+  localVideoDegrees: 0
 };
 
-// Function to apply rotation to videos only
-function rotateVideos(degrees) {
-  const videos = document.querySelectorAll('video');
-  
-  // If we have a specific video selected, only rotate that one
-  if (currentState.selectedVideoIndex >= 0 && currentState.selectedVideoIndex < videos.length) {
-    applyRotationToVideo(videos[currentState.selectedVideoIndex], degrees);
-  } else {
-    // Otherwise rotate all applicable videos
-    videos.forEach(video => {
-      applyRotationToVideo(video, degrees);
-    });
-  }
-  
-  // Add a mutation observer to handle dynamically added videos (common in video calls)
-  setupVideoObserver();
-  
-  return true;
-}
+// Store references to wrapped videos
+const wrappedVideos = new Map();
 
-// Set up a mutation observer to catch new videos added to the DOM
-function setupVideoObserver() {
-  // If we already have an observer, no need to create another
-  if (window._videoObserver) return;
-  
-  // Create a new observer
-  window._videoObserver = new MutationObserver(mutations => {
-    let newVideosFound = false;
-    
-    mutations.forEach(mutation => {
-      if (mutation.addedNodes.length) {
-        mutation.addedNodes.forEach(node => {
-          // Check if the added node is a video
-          if (node.nodeName === 'VIDEO') {
-            newVideosFound = true;
-            if (currentState.degrees !== 0) {
-              applyRotationToVideo(node, currentState.degrees);
-            }
-          }
-          // Check if the added node contains videos
-          else if (node.nodeType === 1) { // Element node
-            const videos = node.querySelectorAll('video');
-            if (videos.length) {
-              newVideosFound = true;
-              if (currentState.degrees !== 0) {
-                videos.forEach(video => applyRotationToVideo(video, currentState.degrees));
-              }
-            }
-          }
-        });
-      }
-    });
-  });
-  
-  // Start observing the document with the configured parameters
-  window._videoObserver.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-}
-
-// Helper function to apply rotation to a single video
-function applyRotationToVideo(video, degrees) {
-  // Check if this is a local video (user's own video)
-  if (currentState.isRemoteOnly && isLocalVideo(video)) {
-    return; // Skip rotation for local videos when in remote-only mode
-  }
-
-  // Remove any existing rotation classes
-  video.classList.remove('rotate-90', 'rotate-180', 'rotate-270');
-  
-  // Apply new rotation if needed
-  if (degrees === 90) {
-    video.classList.add('rotate-90');
-  } else if (degrees === 180) {
-    video.classList.add('rotate-180');
-  } else if (degrees === 270) {
-    video.classList.add('rotate-270');
-  }
-  
-  // Ensure video is visible and properly sized after rotation
-  if (degrees !== 0) {
-    // Create or get a wrapper for the video if it doesn't have one
-    let wrapper = video.parentElement.classList.contains('video-rotation-wrapper') 
-      ? video.parentElement 
-      : createVideoWrapper(video);
-    
-    // Set proper sizing for the video based on rotation angle
-    if (degrees === 90 || degrees === 270) {
-      // For 90/270 degree rotations, we need to adjust dimensions more carefully
-      const videoAspect = video.videoWidth / video.videoHeight;
-      const containerAspect = wrapper.clientWidth / wrapper.clientHeight;
-      
-      // Calculate the best fit dimensions
-      if (containerAspect > 1) { // Landscape container
-        video.style.width = 'auto';
-        video.style.height = '100%';
-        video.style.maxWidth = '100vh';
-        video.style.maxHeight = '100%';
-      } else { // Portrait container
-        video.style.width = '100%';
-        video.style.height = 'auto';
-        video.style.maxWidth = '100%';
-        video.style.maxHeight = '100vw';
-      }
-    } else { // 180 degree rotation
-      video.style.maxWidth = '100%';
-      video.style.maxHeight = '100%';
-      video.style.width = 'auto';
-      video.style.height = 'auto';
-    }
-    
-    video.style.objectFit = 'contain';
-    
-    // Make sure the wrapper is visible and properly configured
-    wrapper.style.display = 'flex';
-    wrapper.style.justifyContent = 'center';
-    wrapper.style.alignItems = 'center';
-    wrapper.style.overflow = 'hidden';
-  } else {
-    // Reset styles when rotation is removed
-    video.style.maxWidth = '';
-    video.style.maxHeight = '';
-    video.style.width = '';
-    video.style.height = '';
-    video.style.objectFit = '';
-    
-    // If the video has a wrapper, reset its styles too
-    if (video.parentElement.classList.contains('video-rotation-wrapper')) {
-      video.parentElement.style.display = '';
-      video.parentElement.style.justifyContent = '';
-      video.parentElement.style.alignItems = '';
-      video.parentElement.style.overflow = '';
-    }
-  }
-}
-
-// Helper function to detect if a video is the local/self video
+// Function to identify if a video is likely a local/self video
 function isLocalVideo(video) {
-  // Common patterns to identify local videos in video conferencing apps
+  // Common patterns for local videos in video conferencing apps
+  // 1. Size - local videos are often smaller
+  const isSmall = video.offsetWidth < 200 || video.offsetHeight < 200;
   
-  // 1. Check for size - local videos are often smaller
-  const isSmallVideo = video.clientWidth < 200 || video.clientHeight < 200;
-  
-  // 2. Check for position - local videos are often in corners
+  // 2. Position - local videos are often in corners
   const rect = video.getBoundingClientRect();
   const isInCorner = (
-    (rect.right > window.innerWidth - 250 && rect.bottom > window.innerHeight - 250) || // Bottom right
-    (rect.left < 250 && rect.bottom > window.innerHeight - 250) // Bottom left
+    (rect.right > window.innerWidth - 250 && rect.bottom > window.innerHeight - 250) || // bottom right
+    (rect.left < 250 && rect.bottom > window.innerHeight - 250) // bottom left
   );
   
-  // 3. Check for common class names or parent elements that indicate local video
-  const hasLocalClasses = (
-    video.classList.contains('local') || 
-    video.classList.contains('self') ||
-    video.classList.contains('user-video') ||
-    (video.parentElement && (
-      video.parentElement.classList.contains('local-participant') ||
-      video.parentElement.classList.contains('self-view')
-    ))
-  );
+  // 3. Classes/attributes that might indicate local video
+  const hasLocalClasses = video.className.toLowerCase().includes('local') || 
+                         video.className.toLowerCase().includes('self') ||
+                         video.className.toLowerCase().includes('user');
   
-  // 4. Check for muted attribute - local videos are often muted
-  const isMuted = video.muted;
-  
-  // Combine these checks - if multiple indicators suggest it's a local video
-  return (isSmallVideo && isInCorner) || hasLocalClasses || (isSmallVideo && isMuted);
+  // Return true if the video matches multiple criteria
+  return (isSmall && isInCorner) || hasLocalClasses;
 }
 
-// Helper function to create a wrapper for a video
+// Function to get all videos on the page
+function getVideos() {
+  const allVideos = Array.from(document.querySelectorAll('video'));
+  
+  if (currentState.isRemoteOnly) {
+    // Filter out local videos
+    return allVideos.filter(video => !isLocalVideo(video));
+  }
+  
+  return allVideos;
+}
+
+// Function to get local videos on the page
+function getLocalVideos() {
+  const allVideos = Array.from(document.querySelectorAll('video'));
+  return allVideos.filter(video => isLocalVideo(video));
+}
+
+// Function to create a wrapper for a video element
 function createVideoWrapper(video) {
+  // Check if this video is already wrapped
+  if (wrappedVideos.has(video)) {
+    return wrappedVideos.get(video);
+  }
+  
+  // Create wrapper element
   const wrapper = document.createElement('div');
-  wrapper.classList.add('video-rotation-wrapper');
+  wrapper.className = 'video-rotate-wrapper';
   
-  // Get original video container dimensions
-  const originalWidth = video.clientWidth;
-  const originalHeight = video.clientHeight;
-  
-  // Set wrapper styles
-  wrapper.style.width = originalWidth ? `${originalWidth}px` : '100%';
-  wrapper.style.height = originalHeight ? `${originalHeight}px` : '100%';
+  // Set wrapper style to maintain video dimensions and positioning
+  wrapper.style.width = '100%';
+  wrapper.style.height = '100%';
   wrapper.style.display = 'flex';
   wrapper.style.justifyContent = 'center';
   wrapper.style.alignItems = 'center';
   wrapper.style.overflow = 'hidden';
   wrapper.style.position = 'relative';
   
-  // Replace video with wrapper containing the video
-  video.parentNode.insertBefore(wrapper, video);
+  // Clone the video's computed styles to the wrapper
+  const videoStyles = window.getComputedStyle(video);
+  if (videoStyles.position === 'absolute' || videoStyles.position === 'fixed') {
+    wrapper.style.position = videoStyles.position;
+    wrapper.style.top = videoStyles.top;
+    wrapper.style.left = videoStyles.left;
+    wrapper.style.right = videoStyles.right;
+    wrapper.style.bottom = videoStyles.bottom;
+    wrapper.style.zIndex = videoStyles.zIndex;
+  }
+  
+  // Replace the video with the wrapper
+  const parent = video.parentNode;
+  parent.insertBefore(wrapper, video);
   wrapper.appendChild(video);
+  
+  // Adjust video style for proper rotation
+  video.style.maxWidth = '100%';
+  video.style.maxHeight = '100%';
+  video.style.objectFit = 'contain';
+  
+  // Store the wrapper reference
+  wrappedVideos.set(video, wrapper);
   
   return wrapper;
 }
 
-// Function to apply rotation to the entire page
-function rotatePage(degrees) {
-  // Remove any existing rotation classes
-  document.body.classList.remove('rotate-90', 'rotate-180', 'rotate-270');
+// Function to apply rotation to a video
+function rotateVideo(video, degrees) {
+  const wrapper = createVideoWrapper(video);
   
-  // Apply new rotation if needed
-  if (degrees === 90) {
-    document.body.classList.add('rotate-90');
-  } else if (degrees === 180) {
-    document.body.classList.add('rotate-180');
-  } else if (degrees === 270) {
-    document.body.classList.add('rotate-270');
+  // Reset any previous transformations
+  video.style.transform = '';
+  wrapper.style.transform = '';
+  
+  if (degrees === 0) {
+    // Reset to original state
+    video.style.maxWidth = '100%';
+    video.style.maxHeight = '100%';
+    return;
   }
   
-  return true;
+  // Apply rotation transformation
+  video.style.transform = `rotate(${degrees}deg)`;
+  
+  // Adjust dimensions based on rotation angle
+  if (degrees === 90 || degrees === 270) {
+    // For 90° or 270° rotations, swap width and height constraints
+    const aspectRatio = video.videoWidth / video.videoHeight;
+    
+    if (aspectRatio > 1) {
+      // Landscape video being rotated to portrait orientation
+      video.style.maxWidth = '100%';
+      video.style.maxHeight = 'none';
+      video.style.width = 'auto';
+      video.style.height = '100%';
+    } else {
+      // Portrait video being rotated to landscape orientation
+      video.style.maxHeight = '100%';
+      video.style.maxWidth = 'none';
+      video.style.height = 'auto';
+      video.style.width = '100%';
+    }
+    
+    // Scale to fit
+    wrapper.style.transform = 'scale(0.8)';
+  }
 }
 
-// Function to apply rotation based on target
-function applyRotation(degrees, target, videoIndex = -1, isRemoteOnly = true) {
-  // Update current state
-  currentState.degrees = degrees;
-  currentState.target = target;
-  currentState.selectedVideoIndex = videoIndex;
-  currentState.isRemoteOnly = isRemoteOnly;
+// Function to rotate the entire page
+function rotatePage(degrees) {
+  // Remove any existing rotation class
+  document.body.classList.remove('rotate-90', 'rotate-180', 'rotate-270');
   
-  // Apply rotation based on target
-  if (target === 'video') {
-    return rotateVideos(degrees);
-  } else if (target === 'page') {
-    return rotatePage(degrees);
+  if (degrees === 0) {
+    return;
   }
   
-  return false;
+  // Add the appropriate rotation class
+  document.body.classList.add(`rotate-${degrees}`);
+}
+
+// Function to apply rotation based on current state
+function applyRotation() {
+  if (currentState.target === 'video') {
+    // Get all videos
+    const videos = getVideos();
+    
+    // Reset all videos first
+    videos.forEach(video => rotateVideo(video, 0));
+    
+    // Apply rotation to specific or all videos
+    if (currentState.videoIndex >= 0 && currentState.videoIndex < videos.length) {
+      // Rotate specific video
+      rotateVideo(videos[currentState.videoIndex], currentState.degrees);
+    } else {
+      // Rotate all videos
+      videos.forEach(video => rotateVideo(video, currentState.degrees));
+    }
+    
+    // Handle local video rotation if enabled
+    if (currentState.rotateLocalVideo) {
+      const localVideos = getLocalVideos();
+      localVideos.forEach(video => rotateVideo(video, currentState.localVideoDegrees));
+    }
+  } else {
+    // Rotate the entire page
+    rotatePage(currentState.degrees);
+  }
 }
 
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (request.action === 'rotate') {
-    const success = applyRotation(
-      request.degrees, 
-      request.target, 
-      request.videoIndex,
-      request.isRemoteOnly !== undefined ? request.isRemoteOnly : true // Default to remote-only if not specified
-    );
-    sendResponse({success: success});
-  } else if (request.action === 'getState') {
-    sendResponse(currentState);
-  } else if (request.action === 'getVideoCount') {
-    // Return the count of applicable video elements on the page
-    let videoCount = 0;
-    const videos = document.querySelectorAll('video');
-    
-    // If we're in remote-only mode, only count remote videos
-    if (currentState.isRemoteOnly) {
-      videos.forEach(video => {
-        if (!isLocalVideo(video)) {
-          videoCount++;
-        }
-      });
-    } else {
-      videoCount = videos.length;
-    }
-    
-    sendResponse({count: videoCount});
-  } else if (request.action === 'setRemoteOnly') {
-    // Update the remote-only setting
-    currentState.isRemoteOnly = request.isRemoteOnly;
-    
-    // If we have an active rotation, reapply it with the new setting
-    if (currentState.degrees !== 0) {
-      applyRotation(
-        currentState.degrees,
-        currentState.target,
-        currentState.selectedVideoIndex,
-        currentState.isRemoteOnly
-      );
-    }
-    
-    sendResponse({success: true});
+  switch (request.action) {
+    case 'rotate':
+      currentState.degrees = request.degrees;
+      currentState.target = request.target;
+      currentState.videoIndex = request.videoIndex;
+      currentState.isRemoteOnly = request.isRemoteOnly;
+      
+      // Apply the rotation
+      applyRotation();
+      
+      sendResponse({success: true});
+      break;
+      
+    case 'rotateLocal':
+      currentState.rotateLocalVideo = request.enabled;
+      currentState.localVideoDegrees = request.degrees;
+      
+      // Apply local video rotation
+      const rotateLocalVideos = getLocalVideos(); // Renamed to avoid conflict
+      if (request.enabled) {
+        rotateLocalVideos.forEach(video => rotateVideo(video, request.degrees));
+      } else {
+        rotateLocalVideos.forEach(video => rotateVideo(video, 0));
+      }
+      
+      sendResponse({success: true});
+      break;
+      
+    case 'getVideoCount':
+      const videos = getVideos();
+      sendResponse({count: videos.length});
+      break;
+      
+    case 'getLocalVideoCount':
+      const localVideos = getLocalVideos(); // This declaration conflicts with the one above
+      sendResponse({count: localVideos.length});
+      break;
+      
+    case 'setRemoteOnly':
+      currentState.isRemoteOnly = request.isRemoteOnly;
+      applyRotation();
+      sendResponse({success: true});
+      break;
+      
+    case 'getState':
+      sendResponse(currentState);
+      break;
   }
+  
   return true; // Keep the message channel open for async responses
 });
 
-// Initialize when the content script is injected
-function initialize() {
-  // Check if we need to apply rotation (e.g., if the user refreshed the page)
-  if (currentState.degrees !== 0) {
-    applyRotation(currentState.degrees, currentState.target, currentState.selectedVideoIndex);
+// Add CSS for page rotation
+const style = document.createElement('style');
+style.textContent = `
+  .rotate-90 {
+    transform: rotate(90deg);
+    transform-origin: center center;
+    height: 100vw;
+    width: 100vh;
+    overflow: auto;
+    position: absolute;
+    top: 0;
+    left: 0;
   }
+  
+  .rotate-180 {
+    transform: rotate(180deg);
+    transform-origin: center center;
+  }
+  
+  .rotate-270 {
+    transform: rotate(270deg);
+    transform-origin: center center;
+    height: 100vw;
+    width: 100vh;
+    overflow: auto;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+`;
+document.head.appendChild(style);
+
+// Apply rotation on page load if there's a saved state
+applyRotation();
+
+
+// New function to intercept and transform getUserMedia
+function setupMediaStreamHook() {
+  // Store the original getUserMedia function
+  const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
+  
+  // Replace getUserMedia with our custom version
+  navigator.mediaDevices.getUserMedia = async function(constraints) {
+    // Call the original method to get the stream
+    const originalStream = await originalGetUserMedia.call(this, constraints);
+    
+    // Only process if video is requested and we want to rotate local video
+    if (constraints.video && currentState.rotateLocalVideo) {
+      try {
+        // Create video element to receive the original stream
+        const videoElement = document.createElement('video');
+        videoElement.srcObject = originalStream;
+        videoElement.autoplay = true;
+        videoElement.muted = true;
+        
+        // Wait for video to be ready
+        await new Promise(resolve => {
+          videoElement.onloadedmetadata = () => {
+            videoElement.play();
+            resolve();
+          };
+        });
+        
+        // Create a canvas to draw the rotated video
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas dimensions to match video
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+        
+        // Function to draw rotated video frames to canvas
+        function drawRotatedVideo() {
+          // Clear the canvas
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Save the canvas state
+          ctx.save();
+          
+          // Translate to center of canvas
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          
+          // Rotate by the specified degrees
+          ctx.rotate((currentState.localVideoDegrees * Math.PI) / 180);
+          
+          // Draw the video frame (centered)
+          ctx.drawImage(
+            videoElement,
+            -canvas.width / 2,
+            -canvas.height / 2,
+            canvas.width,
+            canvas.height
+          );
+          
+          // Restore canvas state
+          ctx.restore();
+          
+          // Schedule the next frame
+          requestAnimationFrame(drawRotatedVideo);
+        }
+        
+        // Start drawing frames
+        drawRotatedVideo();
+        
+        // Capture the canvas as a stream
+        const transformedStream = canvas.captureStream();
+        
+        // Add audio tracks from original stream to the transformed stream
+        originalStream.getAudioTracks().forEach(track => {
+          transformedStream.addTrack(track);
+        });
+        
+        // Return the transformed stream instead of the original
+        return transformedStream;
+      } catch (error) {
+        console.error('Error transforming webcam stream:', error);
+        // Fall back to original stream if there's an error
+        return originalStream;
+      }
+    }
+    
+    // If no video constraints or rotation not enabled, return original stream
+    return originalStream;
+  };
+  
+  console.log('MediaStream hook installed - webcam rotation enabled');
 }
 
-// Run initialization
-initialize();
+// Initialize the media stream hook when the extension loads
+setupMediaStreamHook();

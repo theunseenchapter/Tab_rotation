@@ -4,97 +4,123 @@
   <title>Tab Content Rotator</title>
   <style>
     body {
-      width: 250px;
-      padding: 10px;
+      width: 300px;
       font-family: Arial, sans-serif;
+      padding: 10px;
     }
-    h2 {
-      text-align: center;
-      margin-top: 0;
-      color: #4285f4;
+    
+    h1 {
+      font-size: 16px;
+      margin-bottom: 10px;
     }
-    .control-group {
-      margin-bottom: 15px;
+    
+    .button-group {
+      display: flex;
+      margin-bottom: 10px;
     }
-    label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: bold;
-    }
+    
     button {
-      width: 100%;
-      padding: 8px;
-      margin: 5px 0;
-      background-color: #4285f4;
-      color: white;
-      border: none;
-      border-radius: 4px;
+      flex: 1;
+      margin: 0 2px;
+      padding: 5px;
+      background-color: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 3px;
       cursor: pointer;
-      transition: background-color 0.3s;
     }
+    
     button:hover {
-      background-color: #3367d6;
+      background-color: #e0e0e0;
     }
-    .reset {
-      background-color: #ea4335;
+    
+    .section {
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
     }
-    .reset:hover {
-      background-color: #d33426;
+    
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
     }
-    .status {
-      text-align: center;
+    
+    .toggle-label {
+      flex: 1;
+    }
+    
+    #status {
       margin-top: 10px;
       font-style: italic;
-      color: #5f6368;
+      color: #666;
     }
-    .video-selector {
+    
+    #videoSelectionGroup {
+      display: none;
+    }
+    
+    .nav-buttons {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
-    .video-selector button {
-      width: auto;
-      padding: 5px 8px;
-    }
+    
     #videoCounter {
-      font-size: 14px;
-      color: #5f6368;
+      flex: 1;
+      text-align: center;
     }
   </style>
 </head>
 <body>
-  <h2>Tab Content Rotator</h2>
+  <h1>Tab Content Rotator</h1>
   
-  <div class="control-group">
-    <label>Rotation Options:</label>
-    <button id="rotate90">Rotate 90° Clockwise</button>
-    <button id="rotate180">Rotate 180°</button>
-    <button id="rotate270">Rotate 90° Counter-Clockwise</button>
-    <button id="reset" class="reset">Reset Rotation</button>
+  <div class="section">
+    <h2>Remote Video Rotation</h2>
+    <div class="button-group">
+      <button id="rotate90">90°</button>
+      <button id="rotate180">180°</button>
+      <button id="rotate270">270°</button>
+      <button id="reset">Reset</button>
+    </div>
   </div>
   
-  <div class="control-group">
-    <label>Target Selection:</label>
-    <button id="rotateVideo">Rotate Videos Only</button>
-    <button id="rotateAll">Rotate Entire Page</button>
+  <div class="section">
+    <h2>Local Video Rotation</h2>
     <div class="toggle-container">
-      <label for="remoteOnlyToggle">Remote videos only:</label>
+      <span class="toggle-label">Rotate my video:</span>
+      <input type="checkbox" id="localVideoToggle">
+    </div>
+    <div class="button-group">
+      <button id="localRotate90">90°</button>
+      <button id="localRotate180">180°</button>
+      <button id="localRotate270">270°</button>
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2>Target Selection</h2>
+    <div class="button-group">
+      <button id="rotateVideo">Videos Only</button>
+      <button id="rotateAll">Entire Page</button>
+    </div>
+    
+    <div class="toggle-container">
+      <span class="toggle-label">Remote videos only:</span>
       <input type="checkbox" id="remoteOnlyToggle" checked>
     </div>
   </div>
   
-  <div class="control-group" id="videoSelectionGroup" style="display: none;">
-    <label>Select Video to Rotate:</label>
-    <div class="video-selector">
-      <button id="prevVideo">◀ Previous</button>
-      <span id="videoCounter">Video 0 of 0</span>
-      <button id="nextVideo">Next ▶</button>
+  <div id="videoSelectionGroup" class="section">
+    <h2>Video Selection</h2>
+    <div class="nav-buttons">
+      <button id="prevVideo">◀</button>
+      <span id="videoCounter">Video 1 of 1</span>
+      <button id="nextVideo">▶</button>
     </div>
     <button id="applyToSelected">Apply to Selected Video</button>
   </div>
   
-  <div class="status" id="status">Ready to rotate content</div>
+  <div id="status">Ready</div>
   
   <script src="popup.js"></script>
 </body>

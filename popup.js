@@ -6,6 +6,8 @@ let targetMode = 'video'; // Default to rotating videos only
 let selectedVideoIndex = -1; // -1 means no specific video selected
 let totalVideos = 0; // Total number of videos on the page
 let isRemoteOnly = true; // Default to rotating only remote videos (not local/self video)
+let rotateLocalVideo = false; // Whether to rotate local video
+let localVideoDegrees = 0; // Rotation degrees for local video
 
 // Function to update status message
 function updateStatus(message) {
@@ -37,6 +39,25 @@ function applyRotation(degrees, target, videoIndex = -1) {
         currentRotation = degrees;
       } else {
         updateStatus('Failed to apply rotation. Try refreshing the page.');
+      }
+    });
+  });
+}
+
+// Function to send local video rotation command
+function applyLocalVideoRotation(degrees, enabled = true) {
+  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+    chrome.tabs.sendMessage(tabs[0].id, {
+      action: 'rotateLocal',
+      degrees: degrees,
+      enabled: enabled
+    }, function(response) {
+      if (response && response.success) {
+        updateStatus(`${enabled ? 'Applied' : 'Removed'} ${degrees}° rotation to local video.`);
+        localVideoDegrees = enabled ? degrees : 0;
+        rotateLocalVideo = enabled;
+      } else {
+        updateStatus('Failed to apply local video rotation. Try refreshing the page.');
       }
     });
   });
@@ -79,9 +100,36 @@ function checkVideoCount() {
   });
 }
 
+// Function to check for local videos
+function checkLocalVideoCount() {
+  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+    chrome.tabs.sendMessage(tabs[0].id, {
+      action: 'getLocalVideoCount'
+    }, function(response) {
+      if (response && response.count !== undefined) {
+        const localVideoCount = response.count;
+        
+        // Update UI based on local video count
+        const localVideoToggle = document.getElementById('localVideoToggle');
+        const localRotationButtons = document.querySelectorAll('#localRotate90, #localRotate180, #localRotate270');
+        
+        if (localVideoCount > 0) {
+          localVideoToggle.disabled = false;
+          localRotationButtons.forEach(button => button.disabled = false);
+          updateStatus(`Found ${localVideoCount} local video${localVideoCount !== 1 ? 's' : ''}`);
+        } else {
+          localVideoToggle.disabled = true;
+          localRotationButtons.forEach(button => button.disabled = true);
+          updateStatus('No local videos found on this page.');
+        }
+      }
+    });
+  });
+}
+
 // Initialize popup and add event listeners when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-  // Rotation buttons
+  // Rotation buttons for remote videos
   document.getElementById('rotate90').addEventListener('click', function() {
     applyRotation(90, targetMode);
   });
@@ -96,6 +144,35 @@ document.addEventListener('DOMContentLoaded', function() {
   
   document.getElementById('reset').addEventListener('click', function() {
     applyRotation(0, targetMode);
+  });
+  
+  // Local video rotation toggle
+  document.getElementById('localVideoToggle').addEventListener('change', function() {
+    rotateLocalVideo = this.checked;
+    if (rotateLocalVideo) {
+      applyLocalVideoRotation(localVideoDegrees || 180, true);
+    } else {
+      applyLocalVideoRotation(0, false);
+    }
+  });
+  
+  // Local video rotation buttons
+  document.getElementById('localRotate90').addEventListener('click', function() {
+    localVideoDegrees = 90;
+    document.getElementById('localVideoToggle').checked = true;
+    applyLocalVideoRotation(90, true);
+  });
+  
+  document.getElementById('localRotate180').addEventListener('click', function() {
+    localVideoDegrees = 180;
+    document.getElementById('localVideoToggle').checked = true;
+    applyLocalVideoRotation(180, true);
+  });
+  
+  document.getElementById('localRotate270').addEventListener('click', function() {
+    localVideoDegrees = 270;
+    document.getElementById('localVideoToggle').checked = true;
+    applyLocalVideoRotation(270, true);
   });
   
   // Target selection buttons
@@ -182,8 +259,18 @@ document.addEventListener('DOMContentLoaded', function() {
       if (response) {
         currentRotation = response.degrees || 0;
         targetMode = response.target || 'video';
+        rotateLocalVideo = response.rotateLocalVideo || false;
+        localVideoDegrees = response.localVideoDegrees || 0;
+        
+        // Update UI to reflect current state
+        document.getElementById('localVideoToggle').checked = rotateLocalVideo;
+        
         updateStatus(`Current rotation: ${currentRotation}° on ${targetMode === 'video' ? 'videos' : 'page'}`);
       }
     });
   });
+  
+  // Check for videos on the page
+  checkVideoCount();
+  checkLocalVideoCount();
 });
